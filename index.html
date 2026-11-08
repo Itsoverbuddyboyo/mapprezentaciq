@@ -91,6 +91,7 @@ battles.forEach(battle => {
 let currentTool = null;
 let drawing = false;
 let currentLine = null;
+let drawingPointerId = null;
 const drawings = [];
 const buttons = {
     red: document.getElementById('red'),
@@ -104,26 +105,46 @@ function selectTool(tool) {
         button.classList.toggle('active', name === currentTool);
     });
 
-    if (currentTool) map.dragging.disable();
-    else map.dragging.enable();
+    const container = map.getContainer();
+    if (currentTool) {
+        map.dragging.disable();
+        map.touchZoom.disable();
+        container.style.touchAction = 'none';
+    } else {
+        map.dragging.enable();
+        map.touchZoom.enable();
+        container.style.touchAction = '';
+    }
 }
 
 buttons.red.onclick = () => selectTool('red');
 buttons.blue.onclick = () => selectTool('blue');
 buttons.eraser.onclick = () => selectTool('eraser');
 
+function pointerLatLng(event) {
+    const bounds = map.getContainer().getBoundingClientRect();
+    return map.containerPointToLatLng(L.point(
+        event.clientX - bounds.left,
+        event.clientY - bounds.top
+    ));
+}
+
 function startDrawing(event) {
-    if (!currentTool) return;
-    if (event.type === 'mousedown' && event.originalEvent.button !== 0) return;
+    if (!currentTool || drawing) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    map.getContainer().setPointerCapture(event.pointerId);
 
     drawing = true;
+    drawingPointerId = event.pointerId;
+    const latlng = pointerLatLng(event);
     if (currentTool === 'eraser') {
-        eraseAt(event.latlng);
+        eraseAt(latlng);
         return;
     }
 
     const color = currentTool === 'red' ? '#c43838' : '#4285bd';
-    currentLine = L.polyline([event.latlng], {
+    currentLine = L.polyline([latlng], {
         color,
         weight: 4,
         opacity: .95,
@@ -134,12 +155,14 @@ function startDrawing(event) {
 }
 
 function moveDrawing(event) {
-    if (!drawing || !currentTool) return;
+    if (!drawing || !currentTool || event.pointerId !== drawingPointerId) return;
+    event.preventDefault();
+    const latlng = pointerLatLng(event);
     if (currentTool === 'eraser') {
-        eraseAt(event.latlng);
+        eraseAt(latlng);
         return;
     }
-    if (currentLine) currentLine.addLatLng(event.latlng);
+    if (currentLine) currentLine.addLatLng(latlng);
 }
 
 function eraseAt(latlng) {
@@ -154,19 +177,25 @@ function eraseAt(latlng) {
     }
 }
 
-function stopDrawing() {
-    if (!drawing) return;
+function stopDrawing(event) {
+    if (!drawing || (event && event.pointerId !== undefined && event.pointerId !== drawingPointerId)) return;
+    if (event && event.pointerId !== undefined) {
+        event.preventDefault();
+        const container = map.getContainer();
+        if (container.hasPointerCapture(event.pointerId)) {
+            container.releasePointerCapture(event.pointerId);
+        }
+    }
     drawing = false;
     currentLine = null;
-    if (!currentTool) map.dragging.enable();
+    drawingPointerId = null;
 }
 
-map.on('mousedown touchstart', startDrawing);
-map.on('mousemove touchmove', moveDrawing);
-map.on('mouseup touchend', stopDrawing);
-map.on('mouseout', stopDrawing);
-document.addEventListener('mouseup', stopDrawing);
-document.addEventListener('touchend', stopDrawing);
+const mapContainer = map.getContainer();
+mapContainer.addEventListener('pointerdown', startDrawing);
+mapContainer.addEventListener('pointermove', moveDrawing);
+mapContainer.addEventListener('pointerup', stopDrawing);
+mapContainer.addEventListener('pointercancel', stopDrawing);
 map.getContainer().addEventListener('contextmenu', event => event.preventDefault());
 </script>
 </body>
