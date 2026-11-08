@@ -1,203 +1,97 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ukraine Command Map</title>
+<title>Russo-Ukrainian War | Historical Battle Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
 <style>
 * { box-sizing: border-box; }
-
-html, body, #map {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #20251f;
-    font-family: Arial, sans-serif;
+html, body, #map { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #20251f; font-family: Arial, sans-serif; }
+.leaflet-tile { filter: grayscale(.85) sepia(.3) hue-rotate(35deg) brightness(.78) contrast(1.12); }
+#tools { position: absolute; z-index: 1500; top: 15px; right: 15px; display: flex; gap: 9px; }
+.tool { width: 43px; height: 43px; border: 1px solid #858b7c; border-radius: 5px; cursor: pointer; display: grid; place-items: center; font-size: 20px; box-shadow: 0 2px 8px #0008; }
+#red { background: #a52e2e; } #blue { background: #315f91; } #eraser { background: #383d39; color: white; }
+.tool.active { outline: 2px solid #d1d5c5; outline-offset: 3px; }
+#toggle-battles {
+    position: absolute; z-index: 1500; top: 50%; left: 8px; transform: translateY(-50%);
+    padding: 5px 7px; color: #ddd; background: #20251fb8; border: 1px solid #687064;
+    border-radius: 4px; font-size: 10px; cursor: pointer; opacity: .65;
 }
-
-.leaflet-tile {
-    filter: grayscale(.85) sepia(.3) hue-rotate(35deg)
-            brightness(.78) contrast(1.12);
-}
-
-#tools {
-    position: absolute;
-    z-index: 1500;
-    top: 15px;
-    right: 15px;
-    display: flex;
-    gap: 9px;
-}
-
-.tool {
-    width: 43px;
-    height: 43px;
-    border: 1px solid #858b7c;
-    border-radius: 5px;
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    font-size: 20px;
-    box-shadow: 0 2px 8px #0008;
-}
-
-#red { background: #a52e2e; }
-#blue { background: #315f91; }
-#eraser { background: #383d39; color: white; }
-
-.tool.active {
-    outline: 2px solid #d1d5c5;
-    outline-offset: 3px;
-}
-
-/* MINI OVERVIEW MAP */
-
-#overview {
-    position: absolute;
-    z-index: 1500;
-    left: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 210px;
-    height: 400px;
-    background: #858783;
-    border: 1px solid #a5a79f;
-    border-radius: 4px;
-    overflow: hidden;
-    box-shadow: 0 4px 18px #0009;
-    touch-action: none;
-}
-
-#overview-map {
-    width: 100%;
-    height: 100%;
-    background: #858783;
-}
-
-#overview-map .leaflet-control-container {
-    display: none;
-}
-
-#overview-map .leaflet-interactive {
-    cursor: crosshair;
-}
-
-.overview-label {
-    position: absolute;
-    z-index: 1600;
-    bottom: 7px;
-    left: 8px;
-    font-size: 9px;
-    letter-spacing: 1px;
-    color: #343a32;
-    pointer-events: none;
-    font-weight: bold;
-}
-
-/* Main map controls */
-
-.leaflet-control-zoom a {
-    background: #343a33 !important;
-    color: #e1e5d9 !important;
-    border-color: #687064 !important;
-}
+#toggle-battles:hover, #toggle-battles:focus-visible { opacity: 1; }
+.battle-label { display: flex; align-items: flex-start; gap: 5px; width: max-content; color: #fff; font-size: 11px; line-height: 1.25; text-shadow: 0 1px 3px #000, 1px 0 3px #000, 0 -1px 3px #000; white-space: nowrap; pointer-events: none; }
+.battle-pin { flex: 0 0 13px; width: 13px; height: 13px; margin-top: 1px; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 5px #000b; }
+.battle-pin.ua { background: #438ac2; } .battle-pin.ru { background: #c54444; }
 </style>
 </head>
-
 <body>
-
-<div id="map"></div>
-
+<div id="map" aria-label="Historical map of major Russo-Ukrainian War battles"></div>
 <div id="tools">
-    <button id="red" class="tool active" title="Red pen"></button>
-    <button id="blue" class="tool" title="Blue pen"></button>
-    <button id="eraser" class="tool" title="Eraser">⌫</button>
+    <button id="red" class="tool" title="Red pen" aria-label="Red pen"></button>
+    <button id="blue" class="tool" title="Blue pen" aria-label="Blue pen"></button>
+    <button id="eraser" class="tool" title="Eraser" aria-label="Eraser">⌫</button>
 </div>
-
-<div id="overview">
-    <div id="overview-map"></div>
-    <div class="overview-label">UKRAINE // OVERVIEW</div>
-</div>
-
+<button id="toggle-battles" type="button" aria-label="Hide battle pins" aria-pressed="true">Pins</button>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
+const map = L.map('map', { center: [48.7, 31.2], zoom: 5, minZoom: 5, maxZoom: 19, zoomControl: false });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-// MAIN MAP
+// Selected major battles. Marker colors show the outcome at the battle's end.
+const battles = [
+    { name:'Battle for Kyiv', start:'2022-02', end:'2022-04', coord:[50.45,30.52], side:'ua' },
+    { name:'Siege of Mariupol', start:'2022-02', end:'2022-05', coord:[47.10,37.55], side:'ru' },
+    { name:'Kharkiv counteroffensive', start:'2022-09', end:'2022-09', coord:[49.38,36.45], side:'ua' },
+    { name:'Battle of Bakhmut', start:'2022-07', end:'2023-05', coord:[48.59,38.00], side:'ru' },
+    { name:'Battle of Avdiivka', start:'2023-10', end:'2024-02', coord:[48.14,37.75], side:'ru' }
+];
 
-const map = L.map('map', {
-    center: [48.7, 31.2],
-    zoom: 6,
-    minZoom: 5,
-    maxZoom: 19,
-    zoomControl: true
-});
+const battleLayer = L.layerGroup().addTo(map);
+const monthAbbreviations = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const battleToggle = document.getElementById('toggle-battles');
+let battlesVisible = true;
 
-L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-    }
-).addTo(map);
-
-
-// MINIATURE OVERVIEW MAP
-
-const overview = L.map('overview-map', {
-    center: [48.7, 31.2],
-    zoom: 4,
-    minZoom: 3,
-    maxZoom: 8,
-    zoomControl: false,
-    attributionControl: false,
-    dragging: true,
-    scrollWheelZoom: true,
-    doubleClickZoom: false,
-    touchZoom: true
-});
-
-// MAIN MAP VIEWPORT ON MINI MAP
-
-const viewport = L.rectangle(map.getBounds(), {
-    color: '#a52e2e',
-    weight: 2,
-    fillColor: '#a52e2e',
-    fillOpacity: 0.12,
-    interactive: false
-}).addTo(overview);
-
-function updateOverview() {
-    viewport.setBounds(map.getBounds());
+function toggleBattles() {
+    battlesVisible = !battlesVisible;
+    if (battlesVisible) battleLayer.addTo(map);
+    else map.removeLayer(battleLayer);
+    battleToggle.setAttribute('aria-pressed', String(battlesVisible));
+    battleToggle.setAttribute('aria-label', `${battlesVisible ? 'Hide' : 'Show'} battle pins`);
 }
 
-map.on('move zoom', updateOverview);
+battleToggle.addEventListener('click', toggleBattles);
 
+function escapeHtml(value) {
+    return value.replace(/[&<>"']/g, character => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[character]);
+}
 
-// MINI MAP NAVIGATION
-
-overview.on('click', e => {
-    map.setView(e.latlng, map.getZoom());
+battles.forEach(battle => {
+    const [startYear, startMonth] = battle.start.split('-');
+    const [endYear, endMonth] = battle.end.split('-');
+    const date = battle.start === battle.end
+        ? `${monthAbbreviations[Number(startMonth) - 1]} ${startYear}`
+        : `${monthAbbreviations[Number(startMonth) - 1]} ${startYear}–${monthAbbreviations[Number(endMonth) - 1]} ${endYear}`;
+    const marker = L.marker(battle.coord, {
+        keyboard: false,
+        interactive: false,
+        icon: L.divIcon({
+            className: '',
+            html: `<div class="battle-label"><span class="battle-pin ${battle.side}"></span><span>${escapeHtml(battle.name)} · ${date}</span></div>`,
+            iconSize: [260, 24],
+            iconAnchor: [0, 7]
+        })
+    });
+    marker.addTo(battleLayer);
 });
 
-let overviewDragging = false;
-
-overview.on('drag', () => {
-    map.panTo(overview.getCenter(), { animate: false });
-});
-
-
-// DRAWING TOOLS
-
-let currentTool = 'red';
+let currentTool = null;
 let drawing = false;
 let currentLine = null;
 const drawings = [];
-
 const buttons = {
     red: document.getElementById('red'),
     blue: document.getElementById('blue'),
@@ -205,94 +99,75 @@ const buttons = {
 };
 
 function selectTool(tool) {
-    currentTool = tool;
-
+    currentTool = currentTool === tool ? null : tool;
     Object.entries(buttons).forEach(([name, button]) => {
-        button.classList.toggle('active', name === tool);
+        button.classList.toggle('active', name === currentTool);
     });
+
+    if (currentTool) map.dragging.disable();
+    else map.dragging.enable();
 }
 
 buttons.red.onclick = () => selectTool('red');
 buttons.blue.onclick = () => selectTool('blue');
 buttons.eraser.onclick = () => selectTool('eraser');
 
-
-// DRAWING ON MAIN MAP ONLY
-
-map.on('mousedown', e => {
-    if (e.originalEvent.button !== 0) return;
+function startDrawing(event) {
+    if (!currentTool) return;
+    if (event.type === 'mousedown' && event.originalEvent.button !== 0) return;
 
     drawing = true;
-    map.dragging.disable();
-
     if (currentTool === 'eraser') {
-        eraseAt(e.latlng);
+        eraseAt(event.latlng);
         return;
     }
 
-    const color = currentTool === 'red'
-        ? '#c43838'
-        : '#4285bd';
-
-    currentLine = L.polyline([e.latlng], {
+    const color = currentTool === 'red' ? '#c43838' : '#4285bd';
+    currentLine = L.polyline([event.latlng], {
         color,
         weight: 4,
         opacity: .95,
         lineCap: 'round',
         lineJoin: 'round'
     }).addTo(map);
-
     drawings.push(currentLine);
-});
+}
 
-map.on('mousemove', e => {
-    if (!drawing) return;
-
+function moveDrawing(event) {
+    if (!drawing || !currentTool) return;
     if (currentTool === 'eraser') {
-        eraseAt(e.latlng);
+        eraseAt(event.latlng);
         return;
     }
-
-    if (currentLine) {
-        currentLine.addLatLng(e.latlng);
-    }
-});
+    if (currentLine) currentLine.addLatLng(event.latlng);
+}
 
 function eraseAt(latlng) {
     const radius = 25000;
-
-    for (let i = drawings.length - 1; i >= 0; i--) {
-        const line = drawings[i];
-
+    for (let index = drawings.length - 1; index >= 0; index--) {
+        const line = drawings[index];
         if (!map.hasLayer(line)) continue;
-
-        const points = line.getLatLngs();
-
-        if (points.some(point =>
-            map.distance(latlng, point) < radius
-        )) {
+        if (line.getLatLngs().some(point => map.distance(latlng, point) < radius)) {
             map.removeLayer(line);
-            drawings.splice(i, 1);
+            drawings.splice(index, 1);
         }
     }
 }
 
 function stopDrawing() {
     if (!drawing) return;
-
     drawing = false;
     currentLine = null;
-    map.dragging.enable();
+    if (!currentTool) map.dragging.enable();
 }
 
-map.on('mouseup', stopDrawing);
+map.on('mousedown touchstart', startDrawing);
+map.on('mousemove touchmove', moveDrawing);
+map.on('mouseup touchend', stopDrawing);
 map.on('mouseout', stopDrawing);
 document.addEventListener('mouseup', stopDrawing);
-
-map.getContainer().addEventListener('contextmenu', e => {
-    e.preventDefault();
-});
-
+document.addEventListener('touchend', stopDrawing);
+map.getContainer().addEventListener('contextmenu', event => event.preventDefault());
 </script>
 </body>
 </html>
