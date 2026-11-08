@@ -1,0 +1,298 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ukraine Command Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+* { box-sizing: border-box; }
+
+html, body, #map {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #20251f;
+    font-family: Arial, sans-serif;
+}
+
+.leaflet-tile {
+    filter: grayscale(.85) sepia(.3) hue-rotate(35deg)
+            brightness(.78) contrast(1.12);
+}
+
+#tools {
+    position: absolute;
+    z-index: 1500;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    gap: 9px;
+}
+
+.tool {
+    width: 43px;
+    height: 43px;
+    border: 1px solid #858b7c;
+    border-radius: 5px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    box-shadow: 0 2px 8px #0008;
+}
+
+#red { background: #a52e2e; }
+#blue { background: #315f91; }
+#eraser { background: #383d39; color: white; }
+
+.tool.active {
+    outline: 2px solid #d1d5c5;
+    outline-offset: 3px;
+}
+
+/* MINI OVERVIEW MAP */
+
+#overview {
+    position: absolute;
+    z-index: 1500;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 210px;
+    height: 400px;
+    background: #858783;
+    border: 1px solid #a5a79f;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 4px 18px #0009;
+    touch-action: none;
+}
+
+#overview-map {
+    width: 100%;
+    height: 100%;
+    background: #858783;
+}
+
+#overview-map .leaflet-control-container {
+    display: none;
+}
+
+#overview-map .leaflet-interactive {
+    cursor: crosshair;
+}
+
+.overview-label {
+    position: absolute;
+    z-index: 1600;
+    bottom: 7px;
+    left: 8px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: #343a32;
+    pointer-events: none;
+    font-weight: bold;
+}
+
+/* Main map controls */
+
+.leaflet-control-zoom a {
+    background: #343a33 !important;
+    color: #e1e5d9 !important;
+    border-color: #687064 !important;
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div id="tools">
+    <button id="red" class="tool active" title="Red pen"></button>
+    <button id="blue" class="tool" title="Blue pen"></button>
+    <button id="eraser" class="tool" title="Eraser">⌫</button>
+</div>
+
+<div id="overview">
+    <div id="overview-map"></div>
+    <div class="overview-label">UKRAINE // OVERVIEW</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+// MAIN MAP
+
+const map = L.map('map', {
+    center: [48.7, 31.2],
+    zoom: 6,
+    minZoom: 5,
+    maxZoom: 19,
+    zoomControl: true
+});
+
+L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }
+).addTo(map);
+
+
+// MINIATURE OVERVIEW MAP
+
+const overview = L.map('overview-map', {
+    center: [48.7, 31.2],
+    zoom: 4,
+    minZoom: 3,
+    maxZoom: 8,
+    zoomControl: false,
+    attributionControl: false,
+    dragging: true,
+    scrollWheelZoom: true,
+    doubleClickZoom: false,
+    touchZoom: true
+});
+
+// MAIN MAP VIEWPORT ON MINI MAP
+
+const viewport = L.rectangle(map.getBounds(), {
+    color: '#a52e2e',
+    weight: 2,
+    fillColor: '#a52e2e',
+    fillOpacity: 0.12,
+    interactive: false
+}).addTo(overview);
+
+function updateOverview() {
+    viewport.setBounds(map.getBounds());
+}
+
+map.on('move zoom', updateOverview);
+
+
+// MINI MAP NAVIGATION
+
+overview.on('click', e => {
+    map.setView(e.latlng, map.getZoom());
+});
+
+let overviewDragging = false;
+
+overview.on('drag', () => {
+    map.panTo(overview.getCenter(), { animate: false });
+});
+
+
+// DRAWING TOOLS
+
+let currentTool = 'red';
+let drawing = false;
+let currentLine = null;
+const drawings = [];
+
+const buttons = {
+    red: document.getElementById('red'),
+    blue: document.getElementById('blue'),
+    eraser: document.getElementById('eraser')
+};
+
+function selectTool(tool) {
+    currentTool = tool;
+
+    Object.entries(buttons).forEach(([name, button]) => {
+        button.classList.toggle('active', name === tool);
+    });
+}
+
+buttons.red.onclick = () => selectTool('red');
+buttons.blue.onclick = () => selectTool('blue');
+buttons.eraser.onclick = () => selectTool('eraser');
+
+
+// DRAWING ON MAIN MAP ONLY
+
+map.on('mousedown', e => {
+    if (e.originalEvent.button !== 0) return;
+
+    drawing = true;
+    map.dragging.disable();
+
+    if (currentTool === 'eraser') {
+        eraseAt(e.latlng);
+        return;
+    }
+
+    const color = currentTool === 'red'
+        ? '#c43838'
+        : '#4285bd';
+
+    currentLine = L.polyline([e.latlng], {
+        color,
+        weight: 4,
+        opacity: .95,
+        lineCap: 'round',
+        lineJoin: 'round'
+    }).addTo(map);
+
+    drawings.push(currentLine);
+});
+
+map.on('mousemove', e => {
+    if (!drawing) return;
+
+    if (currentTool === 'eraser') {
+        eraseAt(e.latlng);
+        return;
+    }
+
+    if (currentLine) {
+        currentLine.addLatLng(e.latlng);
+    }
+});
+
+function eraseAt(latlng) {
+    const radius = 25000;
+
+    for (let i = drawings.length - 1; i >= 0; i--) {
+        const line = drawings[i];
+
+        if (!map.hasLayer(line)) continue;
+
+        const points = line.getLatLngs();
+
+        if (points.some(point =>
+            map.distance(latlng, point) < radius
+        )) {
+            map.removeLayer(line);
+            drawings.splice(i, 1);
+        }
+    }
+}
+
+function stopDrawing() {
+    if (!drawing) return;
+
+    drawing = false;
+    currentLine = null;
+    map.dragging.enable();
+}
+
+map.on('mouseup', stopDrawing);
+map.on('mouseout', stopDrawing);
+document.addEventListener('mouseup', stopDrawing);
+
+map.getContainer().addEventListener('contextmenu', e => {
+    e.preventDefault();
+});
+
+</script>
+</body>
+</html>
