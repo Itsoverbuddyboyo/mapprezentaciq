@@ -19,6 +19,13 @@ html, body, #map { margin: 0; width: 100%; height: 100%; overflow: hidden; backg
     border-radius: 4px; font-size: 10px; cursor: pointer; opacity: .65;
 }
 #toggle-battles:hover, #toggle-battles:focus-visible { opacity: 1; }
+#fullscreen-toggle {
+    position: absolute; z-index: 1500; top: 15px; left: 15px; width: 30px; height: 30px;
+    display: grid; place-items: center; padding: 0; color: #eee; background: #20251fb8;
+    border: 1px solid #687064; border-radius: 4px; cursor: pointer; opacity: .7;
+}
+#fullscreen-toggle svg { width: 16px; height: 16px; }
+#fullscreen-toggle:hover, #fullscreen-toggle:focus-visible { opacity: 1; }
 .battle-label { display: flex; align-items: flex-start; gap: 5px; width: max-content; color: #fff; font-size: 11px; line-height: 1.25; text-shadow: 0 1px 3px #000, 1px 0 3px #000, 0 -1px 3px #000; white-space: nowrap; pointer-events: none; }
 .battle-pin { flex: 0 0 13px; width: 13px; height: 13px; margin-top: 1px; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 5px #000b; }
 .battle-pin.ua { background: #438ac2; } .battle-pin.ru { background: #c54444; }
@@ -32,9 +39,34 @@ html, body, #map { margin: 0; width: 100%; height: 100%; overflow: hidden; backg
     <button id="eraser" class="tool" title="Eraser" aria-label="Eraser">⌫</button>
 </div>
 <button id="toggle-battles" type="button" aria-label="Hide battle pins" aria-pressed="true">Pins</button>
+<button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen" title="Enter fullscreen">
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </svg>
+</button>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map('map', { center: [48.7, 31.2], zoom: 5, minZoom: 5, maxZoom: 19, zoomControl: false });
+const fullscreenButton = document.getElementById('fullscreen-toggle');
+
+function updateFullscreenButton() {
+    const isFullscreen = document.fullscreenElement === document.documentElement;
+    fullscreenButton.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen');
+    fullscreenButton.title = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
+    window.setTimeout(() => map.invalidateSize(), 0);
+}
+
+fullscreenButton.addEventListener('click', async () => {
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+    } catch (error) {
+        console.error('Unable to change fullscreen mode:', error);
+        fullscreenButton.title = 'Fullscreen unavailable in this browser';
+    }
+});
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
